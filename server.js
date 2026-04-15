@@ -13,18 +13,26 @@ app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGINS?.split(',') || '*' }));
 app.use(express.json({ limit: '10mb' }));
 
-// Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  }),
-});
+// Firebase Admin — skip if credentials missing
+if (process.env.FIREBASE_PROJECT_ID) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  });
+} else {
+  console.warn('⚠ FIREBASE_PROJECT_ID not set — Firebase Auth disabled');
+}
 
 // MongoDB
 let db;
 async function connectDB() {
+  if (!process.env.MONGODB_URI) {
+    console.warn('⚠ MONGODB_URI not set — database unavailable');
+    return;
+  }
   const client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
   db = client.db('thriveos');
@@ -33,7 +41,12 @@ async function connectDB() {
 }
 
 // Routes
-app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+app.get('/health', (req, res) => res.json({
+  status: 'ok',
+  timestamp: new Date(),
+  db: !!app.locals.db,
+  firebase: !!process.env.FIREBASE_PROJECT_ID,
+}));
 
 // Mount routes after DB connect
 async function mountRoutes() {
@@ -56,11 +69,10 @@ async function mountRoutes() {
   app.use('/api/crisis', crisisRoutes);
 }
 
-// Start
+// Start — graceful even without env vars
 connectDB()
   .then(() => mountRoutes())
   .then(() => {
-    // Error handler AFTER routes
     const { errorHandler } = require('./middleware/errorHandler');
     app.use(errorHandler);
   })
