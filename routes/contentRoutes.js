@@ -1,0 +1,180 @@
+const express = require('express');
+const router = express.Router();
+const Joi = require('joi');
+const { authenticateUser } = require('../middleware/authMiddleware');
+
+// GET /api/content/topics — List all topics
+router.get('/topics', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const topics = await db.collection('hazard_taxonomy').find({}).toArray();
+    res.json({ topics });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch topics' });
+  }
+});
+
+// GET /api/content/topics/:id — Topic detail with lessons
+router.get('/topics/:id', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const topic = await db.collection('hazard_taxonomy').findOne({ id: req.params.id });
+    if (!topic) return res.status(404).json({ error: 'Topic not found' });
+
+    const lessons = await db.collection('content_lessons')
+      .find({ primaryHazard: req.params.id })
+      .sort({ sortOrder: 1 })
+      .toArray();
+
+    // Get user progress for these lessons
+    const lessonIds = lessons.map((l) => l._id.toString());
+    const progress = await db.collection('lesson_progress')
+      .find({ userId: req.auth.userId, lessonId: { $in: lessonIds } })
+      .toArray();
+
+    const progressMap = new Map(progress.map((p) => [p.lessonId, p]));
+
+    res.json({
+      topic,
+      lessons: lessons.map((l) => ({
+        ...l,
+        completed: progressMap.has(l._id.toString()),
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch topic' });
+  }
+});
+
+// GET /api/content/lessons/:id — Single lesson
+router.get('/lessons/:id', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { ObjectId } = require('mongodb');
+    const lesson = await db.collection('content_lessons').findOne({ _id: new ObjectId(req.params.id) });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json({ lesson });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch lesson' });
+  }
+});
+
+// POST /api/content/lessons/:id/progress — Mark lesson complete
+router.post('/lessons/:id/progress', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { ObjectId } = require('mongodb');
+
+    const lesson = await db.collection('content_lessons').findOne({ _id: new ObjectId(req.params.id) });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+
+    await db.collection('lesson_progress').updateOne(
+      { userId: req.auth.userId, lessonId: req.params.id },
+      {
+        $set: {
+          userId: req.auth.userId,
+          lessonId: req.params.id,
+          lessonTitle: lesson.title,
+          completedAt: new Date(),
+        },
+      },
+      { upsert: true }
+    );
+
+    res.json({ message: 'Progress saved' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save progress' });
+  }
+});
+
+// GET /api/content/scenarios — List scenarios
+router.get('/scenarios', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { hazardCategory } = req.query;
+
+    const filter = hazardCategory ? { hazardCategory } : {};
+    const scenarios = await db.collection('content_scenarios')
+      .find(filter)
+      .toArray();
+
+    res.json({ scenarios });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch scenarios' });
+  }
+});
+
+// POST /api/content/scenarios/:id/respond — Submit scenario response
+router.post('/scenarios/:id/respond', authenticateUser, async (req, res) => {
+  try {
+    const schema = Joi.object({
+      selectedOptionId: Joi.string().required(),
+    });
+
+    const { error, value } = schema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
+    const db = req.app.locals.db;
+    const { ObjectId } = require('mongodb');
+
+    const scenario = await db.collection('content_scenarios').findOne({ _id: new ObjectId(req.params.id) });
+    if (!scenario) return res.status(404).json({ error: 'Scenario not found' });
+
+    const selectedOption = (scenario.options || []).find((o) => o.id === value.selectedOptionId);
+
+    await db.collection('scenario_responses').insertOne({
+      userId: req.auth.userId,
+      scenarioId: req.params.id,
+      selectedOptionId: value.selectedOptionId,
+      isOptimal: selectedOption?.isOptimal || false,
+      createdAt: new Date(),
+    });
+
+    res.json({
+      isOptimal: selectedOption?.isOptimal || false,
+      feedback: selectedOption?.feedback || '',
+      expertExplanation: scenario.expertExplanation || '',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to submit response' });
+  }
+});
+
+// POST /api/content/reflections — Submit a reflection
+router.post('/reflections', authenticateUser, async (req, res) => {
+  try {
+    const schema = Joi.object({
+      promptId: Joi.string().required(),
+      response: Joi.string().min(1).max(2000).required(),
+    });
+
+    const { error, value } = schema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
+    const db = req.app.locals.db;
+    const result = await db.collection('reflections').insertOne({
+      userId: req.auth.userId,
+      promptId: value.promptId,
+      response: value.response,
+      createdAt: new Date(),
+    });
+
+    res.status(201).json({ reflectionId: result.insertedId });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to save reflection' });
+  }
+});
+
+// GET /api/content/koda — Koda AI recommendations
+router.get('/koda', authenticateUser, async (req, res) => {
+  try {
+    const { analyseCheckins } = require('../services/kodaEngine');
+    const db = req.app.locals.db;
+    const result = await analyseCheckins(db, req.auth.userId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get Koda recommendations' });
+  }
+});
+
+module.exports = { contentRoutes: router };
