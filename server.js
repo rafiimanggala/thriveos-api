@@ -10,7 +10,12 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGINS?.split(',') || '*' }));
+const allowedOrigins = [
+  ...(process.env.CORS_ORIGINS?.split(',') || []),
+  'https://hodie-labs-1560a.web.app',
+  'https://hodie-labs-1560a.firebaseapp.com',
+];
+app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : '*' }));
 app.use(express.json({ limit: '10mb' }));
 
 // Firebase Admin — skip if credentials missing
