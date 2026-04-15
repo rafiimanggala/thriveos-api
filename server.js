@@ -56,13 +56,14 @@ async function mountRoutes() {
   app.use('/api/crisis', crisisRoutes);
 }
 
-// Error handler
-const { errorHandler } = require('./middleware/errorHandler');
-app.use(errorHandler);
-
 // Start
 connectDB()
   .then(() => mountRoutes())
+  .then(() => {
+    // Error handler AFTER routes
+    const { errorHandler } = require('./middleware/errorHandler');
+    app.use(errorHandler);
+  })
   .then(() => {
     app.listen(PORT, () => console.log(`ThriveOS API running on port ${PORT}`));
   })
