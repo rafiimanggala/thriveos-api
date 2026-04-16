@@ -14,6 +14,8 @@ const allowedOrigins = [
   ...(process.env.CORS_ORIGINS?.split(',') || []),
   'https://hodie-labs-1560a.web.app',
   'https://hodie-labs-1560a.firebaseapp.com',
+  'https://thriveos-app.web.app',
+  'https://thriveos-app.firebaseapp.com',
 ];
 app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : '*' }));
 app.use(express.json({ limit: '10mb' }));
