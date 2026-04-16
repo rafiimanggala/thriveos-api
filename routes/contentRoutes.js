@@ -165,6 +165,77 @@ router.post('/reflections', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/content/lived-experience — List lived experience stories (paginated)
+router.get('/lived-experience', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (req.query.hazardCategory) filter.hazardCategory = req.query.hazardCategory;
+
+    const [stories, total] = await Promise.all([
+      db.collection('lived_experience')
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
+      db.collection('lived_experience').countDocuments(filter),
+    ]);
+
+    res.json({ stories, total, page, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch lived experience stories' });
+  }
+});
+
+// GET /api/content/daily-quotes — Get daily quote(s)
+router.get('/daily-quotes', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    // Use date-based seed for consistent daily quote
+    const today = new Date().toISOString().split('T')[0];
+    const dateSeed = today.replace(/-/g, '');
+    const total = await db.collection('daily_quotes').countDocuments();
+
+    if (total === 0) return res.json({ quote: null });
+
+    const index = parseInt(dateSeed, 10) % total;
+    const quote = await db.collection('daily_quotes')
+      .find({})
+      .skip(index)
+      .limit(1)
+      .toArray();
+
+    res.json({ quote: quote[0] || null, date: today });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch daily quote' });
+  }
+});
+
+// GET /api/content/quick-tools — List quick intervention tools
+router.get('/quick-tools', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    const filter = {};
+    if (req.query.hazardCategory) filter.hazardCategory = req.query.hazardCategory;
+
+    const tools = await db.collection('quick_tools')
+      .find(filter)
+      .sort({ title: 1 })
+      .toArray();
+
+    res.json({ tools });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch quick tools' });
+  }
+});
+
 // GET /api/content/koda — Koda AI recommendations
 router.get('/koda', authenticateUser, async (req, res) => {
   try {

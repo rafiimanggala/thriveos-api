@@ -152,6 +152,31 @@ router.get('/me/timeline', authenticateUser, async (req, res) => {
   }
 });
 
+// PATCH /api/users/me/settings — Update user settings
+router.patch('/me/settings', authenticateUser, async (req, res) => {
+  try {
+    const schema = Joi.object({
+      checkin_time: Joi.string().pattern(/^\d{2}:\d{2}$/),
+      notifications_enabled: Joi.boolean(),
+      theme: Joi.string().valid('light', 'dark', 'system'),
+    }).min(1);
+
+    const { error, value } = schema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
+    const db = req.app.locals.db;
+    await db.collection('users').updateOne(
+      { _id: req.auth.userId },
+      { $set: { settings: value, updatedAt: new Date() } },
+    );
+
+    const updated = await db.collection('users').findOne({ _id: req.auth.userId });
+    res.json({ settings: updated.settings });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
 // GET /api/users/me/streak — Get streak data
 router.get('/me/streak', authenticateUser, async (req, res) => {
   try {
