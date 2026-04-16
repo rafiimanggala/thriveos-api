@@ -4,6 +4,7 @@ const { authenticateUser } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/roleMiddleware');
 const { MIN_GROUP_SIZE_FOR_DISPLAY, RISK_THRESHOLDS } = require('../utils/constants');
 const { HAZARD_CATEGORIES } = require('../utils/hazardMapping');
+const { generateComplianceCSV } = require('../services/exportService');
 
 // All executive routes require authentication + executive/admin role
 router.use(authenticateUser, requireRole('executive', 'admin'));
@@ -191,24 +192,15 @@ router.get('/export/:format', async (req, res) => {
     }
 
     const db = req.app.locals.db;
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-    const checkins = await db.collection('checkins')
-      .find({ completedAt: { $gte: thirtyDaysAgo } })
-      .toArray();
 
     if (format === 'csv') {
-      const header = 'Date,UserID,WHO5_Total,MoodLabel\n';
-      const rows = checkins.map((c) =>
-        `${c.completedAt.toISOString()},${c.userId},${c.who5?.total || ''},${c.moodLabel}`
-      ).join('\n');
-
+      const csv = await generateComplianceCSV(db, req.auth.orgId);
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename=thriveos-report.csv');
-      res.send(header + rows);
+      res.setHeader('Content-Disposition', 'attachment; filename=thriveos-compliance-report.csv');
+      res.send(csv);
     } else {
       // PDF placeholder - would use a PDF library in production
-      res.json({ message: 'PDF export coming soon', checkinCount: checkins.length });
+      res.json({ message: 'PDF export coming soon' });
     }
   } catch (error) {
     res.status(500).json({ error: 'Failed to export report' });

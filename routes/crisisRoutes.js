@@ -36,8 +36,8 @@ router.post('/report', authenticateUser, async (req, res) => {
   }
 });
 
-// GET /api/crisis/resources — Get crisis resources
-router.get('/resources', authenticateUser, async (req, res) => {
+// GET /api/crisis/resources — Get crisis resources (PUBLIC — no auth required)
+router.get('/resources', async (req, res) => {
   try {
     const resources = [
       {
@@ -72,16 +72,28 @@ router.get('/resources', authenticateUser, async (req, res) => {
       },
     ];
 
-    // Check if org has custom EAP provider
+    // If authenticated, check for org-specific EAP provider
     const db = req.app.locals.db;
-    const org = await db.collection('organisations').findOne({ _id: req.auth.orgId });
-    if (org?.eapProvider) {
-      resources.unshift({
-        name: `${org.name} EAP — ${org.eapProvider.name}`,
-        phone: org.eapProvider.phone,
-        description: 'Your organisation\'s Employee Assistance Program',
-        url: org.eapProvider.url,
-      });
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ') && db) {
+      try {
+        const admin = require('firebase-admin');
+        const token = authHeader.split('Bearer ')[1];
+        const decoded = await admin.auth().verifyIdToken(token);
+        if (decoded.orgId) {
+          const org = await db.collection('organisations').findOne({ _id: decoded.orgId });
+          if (org?.eapProvider) {
+            resources.unshift({
+              name: `${org.name} EAP — ${org.eapProvider.name}`,
+              phone: org.eapProvider.phone,
+              description: 'Your organisation\'s Employee Assistance Program',
+              url: org.eapProvider.url,
+            });
+          }
+        }
+      } catch (_) {
+        // Ignore auth errors — resources still served without EAP
+      }
     }
 
     res.json({ resources });

@@ -3,6 +3,7 @@ const router = express.Router();
 const Joi = require('joi');
 const { authenticateUser } = require('../middleware/authMiddleware');
 const { mapWHO5ToRiskSignals, mapFactorsToRiskSignals } = require('../utils/hazardMapping');
+const { getMoodLabel } = require('../utils/constants');
 
 const checkinSchema = Joi.object({
   who5: Joi.object({
@@ -30,11 +31,7 @@ router.post('/', authenticateUser, async (req, res) => {
     const who5Total = who5.q1 + who5.q2 + who5.q3 + who5.q4 + who5.q5;
 
     // Determine mood label from WHO-5 total
-    let moodLabel = 'great';
-    if (who5Total <= 8) moodLabel = 'struggling';
-    else if (who5Total <= 13) moodLabel = 'low';
-    else if (who5Total <= 17) moodLabel = 'okay';
-    else if (who5Total <= 21) moodLabel = 'good';
+    const moodLabel = getMoodLabel(who5Total);
 
     // Generate risk signals
     const who5Signals = mapWHO5ToRiskSignals({ ...who5, total: who5Total });

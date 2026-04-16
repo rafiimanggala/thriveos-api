@@ -5,11 +5,14 @@ const { MongoClient } = require('mongodb');
 const admin = require('firebase-admin');
 require('dotenv').config();
 
+const { globalLimiter, authLimiter } = require('./middleware/rateLimiter');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet());
+app.use(globalLimiter);
 const allowedOrigins = [
   ...(process.env.CORS_ORIGINS?.split(',') || []),
   'https://hodie-labs-1560a.web.app',
@@ -66,7 +69,7 @@ async function mountRoutes() {
   const { executiveRoutes } = require('./routes/executiveRoutes');
   const { crisisRoutes } = require('./routes/crisisRoutes');
 
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/checkins', checkinRoutes);
   app.use('/api/content', contentRoutes);
