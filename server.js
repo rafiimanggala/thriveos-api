@@ -68,6 +68,7 @@ async function mountRoutes() {
   const { managerRoutes } = require('./routes/managerRoutes');
   const { executiveRoutes } = require('./routes/executiveRoutes');
   const { crisisRoutes } = require('./routes/crisisRoutes');
+  const { riskSignalsRoutes } = require('./routes/riskSignalsRoutes');
 
   app.use('/api/auth', authLimiter, authRoutes);
   app.use('/api/users', userRoutes);
@@ -77,6 +78,7 @@ async function mountRoutes() {
   app.use('/api/manager', managerRoutes);
   app.use('/api/executive', executiveRoutes);
   app.use('/api/crisis', crisisRoutes);
+  app.use('/api/risk-signals', riskSignalsRoutes);
 }
 
 // Start — graceful even without env vars

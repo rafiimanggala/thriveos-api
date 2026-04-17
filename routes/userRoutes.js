@@ -191,4 +191,52 @@ router.get('/me/streak', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/users/me/achievements — Get earned badges joined with definitions
+router.get('/me/achievements', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const userId = req.auth.userId;
+
+    const [earned, definitions] = await Promise.all([
+      db.collection('userBadges').find({ userId }).toArray(),
+      db.collection('badges').find({}).toArray(),
+    ]);
+
+    const defMap = new Map(definitions.map((b) => [b.id, b]));
+    const achievements = earned.map((e) => {
+      const def = defMap.get(e.badgeId) || {};
+      return {
+        id: e.badgeId,
+        name: def.name || e.badgeId,
+        description: def.description || '',
+        icon: def.icon || '',
+        category: def.category || 'general',
+        earnedAt: e.earnedAt,
+      };
+    });
+
+    res.json(achievements);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch achievements' });
+  }
+});
+
+// POST /api/users/me/push-token — Store Expo push token
+router.put('/me/push-token', authenticateUser, async (req, res) => {
+  try {
+    const { pushToken } = req.body;
+    if (typeof pushToken !== 'string' || pushToken.length < 10) {
+      return res.status(400).json({ error: 'Invalid push token' });
+    }
+    const db = req.app.locals.db;
+    await db.collection('users').updateOne(
+      { _id: req.auth.userId },
+      { $set: { pushToken, pushTokenUpdatedAt: new Date() } }
+    );
+    res.json({ message: 'Push token updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update push token' });
+  }
+});
+
 module.exports = { userRoutes: router };

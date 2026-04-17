@@ -181,4 +181,40 @@ router.post('/chat/:teamId/messages', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/social/teams/:id/leaderboard — Top contributors by growth score
+router.get('/teams/:id/leaderboard', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+
+    // Aggregate kudos count + checkins in last 30 days per user
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const kudosAgg = await db.collection('kudos').aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      { $group: { _id: '$recipientId', kudosCount: { $sum: 1 } } },
+      { $sort: { kudosCount: -1 } },
+      { $limit: limit },
+    ]).toArray();
+
+    const userIds = kudosAgg.map((k) => k._id);
+    const users = await db.collection('users').find({ _id: { $in: userIds } }).toArray();
+    const userMap = new Map(users.map((u) => [u._id, u]));
+
+    const entries = kudosAgg.map((k, idx) => {
+      const u = userMap.get(k._id) || {};
+      return {
+        rank: idx + 1,
+        userId: k._id,
+        name: u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : 'Anonymous',
+        score: k.kudosCount,
+        department: u.department || null,
+      };
+    });
+
+    res.json(entries);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
 module.exports = { socialRoutes: router };
