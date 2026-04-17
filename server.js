@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet());
-app.use(globalLimiter);
+// CORS MUST run before rate limiter so 429 responses carry Access-Control-* headers
 const allowedOrigins = [
   ...(process.env.CORS_ORIGINS?.split(',') || []),
   'https://hodie-labs-1560a.web.app',
@@ -21,6 +21,7 @@ const allowedOrigins = [
   'https://thriveos-app.firebaseapp.com',
 ];
 app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : '*' }));
+app.use(globalLimiter);
 app.use(express.json({ limit: '10mb' }));
 
 // Firebase Admin — skip if credentials missing
