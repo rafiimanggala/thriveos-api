@@ -18,13 +18,22 @@ router.get('/topics', authenticateUser, async (req, res) => {
 router.get('/topics/:id', authenticateUser, async (req, res) => {
   try {
     const db = req.app.locals.db;
-    const topic = await db.collection('hazard_taxonomy').findOne({ id: req.params.id });
+    const topicId = req.params.id;
+    const topic = await db.collection('hazard_taxonomy').findOne({ id: topicId });
     if (!topic) return res.status(404).json({ error: 'Topic not found' });
 
-    const lessons = await db.collection('content_lessons')
-      .find({ primaryHazard: req.params.id })
+    // Primary query by primaryHazard; fallback to topicId or category
+    let lessons = await db.collection('content_lessons')
+      .find({ primaryHazard: topicId })
       .sort({ sortOrder: 1 })
       .toArray();
+
+    if (!lessons.length) {
+      lessons = await db.collection('content_lessons')
+        .find({ $or: [{ topicId }, { category: topicId }] })
+        .sort({ sortOrder: 1 })
+        .toArray();
+    }
 
     // Get user progress for these lessons
     const lessonIds = lessons.map((l) => l._id.toString());
@@ -35,9 +44,17 @@ router.get('/topics/:id', authenticateUser, async (req, res) => {
     const progressMap = new Map(progress.map((p) => [p.lessonId, p]));
 
     res.json({
-      topic,
+      topic: {
+        ...topic,
+        id: topic.id,
+        title: topic.title || topic.name,
+        description: topic.description || topic.summary || '',
+      },
       lessons: lessons.map((l) => ({
         ...l,
+        id: l._id.toString(),
+        title: l.title || l.name,
+        durationMin: l.durationMin ?? l.durationMinutes ?? l.duration_minutes ?? 0,
         completed: progressMap.has(l._id.toString()),
       })),
     });
@@ -73,6 +90,7 @@ router.post('/lessons/:id/progress', authenticateUser, async (req, res) => {
       {
         $set: {
           userId: req.auth.userId,
+          orgId: req.auth.orgId,
           lessonId: req.params.id,
           lessonTitle: lesson.title,
           completedAt: new Date(),
@@ -124,6 +142,7 @@ router.post('/scenarios/:id/respond', authenticateUser, async (req, res) => {
 
     await db.collection('scenario_responses').insertOne({
       userId: req.auth.userId,
+      orgId: req.auth.orgId,
       scenarioId: req.params.id,
       selectedOptionId: value.selectedOptionId,
       isOptimal: selectedOption?.isOptimal || false,
@@ -154,6 +173,7 @@ router.post('/reflections', authenticateUser, async (req, res) => {
     const db = req.app.locals.db;
     const result = await db.collection('reflections').insertOne({
       userId: req.auth.userId,
+      orgId: req.auth.orgId,
       promptId: value.promptId,
       response: value.response,
       createdAt: new Date(),
