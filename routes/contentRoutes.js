@@ -159,6 +159,45 @@ router.post('/scenarios/:id/respond', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/content/scenarios/:id/results — Aggregated voting results
+router.get('/scenarios/:id/results', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { ObjectId } = require('mongodb');
+    const scenarioId = req.params.id;
+
+    const scenario = await db.collection('content_scenarios').findOne({ _id: new ObjectId(scenarioId) });
+    if (!scenario) return res.status(404).json({ error: 'Scenario not found' });
+
+    const responses = await db.collection('scenario_responses')
+      .find({ scenarioId })
+      .toArray();
+
+    const total = responses.length;
+    const optionCounts = {};
+    for (const r of responses) {
+      optionCounts[r.selectedOptionId] = (optionCounts[r.selectedOptionId] || 0) + 1;
+    }
+
+    const options = (scenario.options || []).map((o) => ({
+      id: o.id,
+      label: o.label || o.text || '',
+      count: optionCounts[o.id] || 0,
+      percentage: total > 0 ? Math.round(((optionCounts[o.id] || 0) / total) * 100) : 0,
+      isOptimal: o.isOptimal || false,
+    }));
+
+    res.json({
+      scenarioId,
+      totalResponders: total,
+      options,
+      expertExplanation: scenario.expertExplanation || '',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch scenario results' });
+  }
+});
+
 // POST /api/content/reflections — Submit a reflection
 router.post('/reflections', authenticateUser, async (req, res) => {
   try {

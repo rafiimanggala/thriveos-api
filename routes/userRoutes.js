@@ -239,4 +239,22 @@ router.put('/me/push-token', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/users/me/push-token — Retrieve current push token (diagnostics)
+router.get('/me/push-token', authenticateUser, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const user = await db.collection('users').findOne(
+      { _id: req.auth.userId },
+      { projection: { pushToken: 1, pushTokenUpdatedAt: 1 } }
+    );
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      pushToken: user.pushToken || null,
+      pushTokenUpdatedAt: user.pushTokenUpdatedAt || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch push token' });
+  }
+});
+
 module.exports = { userRoutes: router };

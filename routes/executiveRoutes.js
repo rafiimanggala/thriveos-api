@@ -18,9 +18,13 @@ router.get('/dashboard', async (req, res) => {
     const [totalUsers, activeUsers, checkins, riskTags] = await Promise.all([
       db.collection('users').countDocuments({ orgId: req.auth.orgId }),
       db.collection('checkins').distinct('userId', {
+        orgId: req.auth.orgId,
         completedAt: { $gte: thirtyDaysAgo },
       }),
-      db.collection('checkins').find({ completedAt: { $gte: thirtyDaysAgo } }).toArray(),
+      db.collection('checkins').find({
+        orgId: req.auth.orgId,
+        completedAt: { $gte: thirtyDaysAgo },
+      }).toArray(),
       db.collection('checkin_risk_tags').find({
         orgId: req.auth.orgId,
         timestamp: { $gte: thirtyDaysAgo },
@@ -117,15 +121,16 @@ router.get('/compliance', async (req, res) => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     const activeUsers = await db.collection('checkins').distinct('userId', {
+      orgId: req.auth.orgId,
       completedAt: { $gte: thirtyDaysAgo },
     });
 
     const conversationLogs = await db.collection('conversation_logs')
-      .find({ createdAt: { $gte: thirtyDaysAgo } })
+      .find({ orgId: req.auth.orgId, createdAt: { $gte: thirtyDaysAgo } })
       .toArray();
 
     const managerActions = await db.collection('manager_actions')
-      .find({ createdAt: { $gte: thirtyDaysAgo } })
+      .find({ orgId: req.auth.orgId, createdAt: { $gte: thirtyDaysAgo } })
       .toArray();
 
     res.json({

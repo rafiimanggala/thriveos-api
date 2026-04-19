@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const Joi = require('joi');
+const { ObjectId } = require('mongodb');
 const { authenticateUser } = require('../middleware/authMiddleware');
+const { requireRole } = require('../middleware/roleMiddleware');
 
 // POST /api/crisis/report — Submit a crisis report (anonymous option)
 router.post('/report', authenticateUser, async (req, res) => {
@@ -99,6 +101,57 @@ router.get('/resources', async (req, res) => {
     res.json({ resources });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch resources' });
+  }
+});
+
+// GET /api/crisis/reports — Support/manager retrieve org crisis reports
+router.get('/reports', authenticateUser, requireRole('manager', 'executive', 'admin'), async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const status = req.query.status;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    const query = { orgId: req.auth.orgId };
+    if (status) query.status = status;
+
+    const reports = await db.collection('crisis_reports')
+      .find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    res.json({ reports });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch reports' });
+  }
+});
+
+// PATCH /api/crisis/reports/:id — Update report status
+router.patch('/reports/:id', authenticateUser, requireRole('manager', 'executive', 'admin'), async (req, res) => {
+  try {
+    const schema = Joi.object({
+      status: Joi.string().valid('open', 'in_progress', 'resolved', 'escalated').required(),
+      note: Joi.string().max(1000).allow(''),
+    });
+    const { error, value } = schema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
+    const db = req.app.locals.db;
+    let reportId;
+    try {
+      reportId = new ObjectId(req.params.id);
+    } catch (_) {
+      return res.status(400).json({ error: 'Invalid report id' });
+    }
+    const result = await db.collection('crisis_reports').updateOne(
+      { _id: reportId, orgId: req.auth.orgId },
+      { $set: { status: value.status, note: value.note, updatedAt: new Date(), updatedBy: req.auth.userId } }
+    );
+
+    if (result.matchedCount === 0) return res.status(404).json({ error: 'Report not found' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update report' });
   }
 });
 

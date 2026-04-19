@@ -23,6 +23,7 @@ router.post('/', authenticateUser, async (req, res) => {
     const docs = value.signals.map((s) => ({
       ...s,
       userId: req.auth.userId,
+      orgId: req.auth.orgId,
       timestamp: s.timestamp ? new Date(s.timestamp) : new Date(),
       createdAt: new Date(),
     }));

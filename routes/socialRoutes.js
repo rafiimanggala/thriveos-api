@@ -21,9 +21,15 @@ router.post('/kudos', authenticateUser, async (req, res) => {
     const toUser = await db.collection('users').findOne({ _id: value.toUserId });
     if (!toUser) return res.status(404).json({ error: 'Recipient not found' });
 
+    // Enforce same-org kudos
+    if (toUser.orgId && toUser.orgId !== req.auth.orgId) {
+      return res.status(403).json({ error: 'Cannot send kudos to user outside your organisation' });
+    }
+
     const result = await db.collection('kudos').insertOne({
       fromUserId: req.auth.userId,
       toUserId: value.toUserId,
+      orgId: req.auth.orgId,
       message: value.message,
       category: value.category,
       reactions: [],
@@ -43,7 +49,10 @@ router.get('/kudos/feed', authenticateUser, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
 
     const kudos = await db.collection('kudos')
-      .find({ $or: [{ fromUserId: req.auth.userId }, { toUserId: req.auth.userId }] })
+      .find({
+        orgId: req.auth.orgId,
+        $or: [{ fromUserId: req.auth.userId }, { toUserId: req.auth.userId }],
+      })
       .sort({ createdAt: -1 })
       .limit(limit)
       .toArray();
@@ -67,10 +76,14 @@ router.post('/kudos/:id/react', authenticateUser, async (req, res) => {
     const db = req.app.locals.db;
     const { ObjectId } = require('mongodb');
 
-    await db.collection('kudos').updateOne(
-      { _id: new ObjectId(req.params.id) },
+    const reactResult = await db.collection('kudos').updateOne(
+      { _id: new ObjectId(req.params.id), orgId: req.auth.orgId },
       { $push: { reactions: { userId: req.auth.userId, emoji: value.emoji, createdAt: new Date() } } }
     );
+
+    if (reactResult.matchedCount === 0) {
+      return res.status(404).json({ error: 'Kudos not found' });
+    }
 
     res.json({ message: 'Reaction added' });
   } catch (error) {
@@ -146,7 +159,7 @@ router.get('/chat/:teamId/messages', authenticateUser, async (req, res) => {
     const before = req.query.before ? new Date(req.query.before) : new Date();
 
     const messages = await db.collection('chat_messages')
-      .find({ teamId: req.params.teamId, createdAt: { $lt: before } })
+      .find({ teamId: req.params.teamId, orgId: req.auth.orgId, createdAt: { $lt: before } })
       .sort({ createdAt: -1 })
       .limit(limit)
       .toArray();
@@ -170,6 +183,7 @@ router.post('/chat/:teamId/messages', authenticateUser, async (req, res) => {
     const db = req.app.locals.db;
     const result = await db.collection('chat_messages').insertOne({
       teamId: req.params.teamId,
+      orgId: req.auth.orgId,
       userId: req.auth.userId,
       text: value.text,
       createdAt: new Date(),
@@ -190,8 +204,8 @@ router.get('/teams/:id/leaderboard', authenticateUser, async (req, res) => {
     // Aggregate kudos count + checkins in last 30 days per user
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const kudosAgg = await db.collection('kudos').aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-      { $group: { _id: '$recipientId', kudosCount: { $sum: 1 } } },
+      { $match: { orgId: req.auth.orgId, createdAt: { $gte: thirtyDaysAgo } } },
+      { $group: { _id: '$toUserId', kudosCount: { $sum: 1 } } },
       { $sort: { kudosCount: -1 } },
       { $limit: limit },
     ]).toArray();

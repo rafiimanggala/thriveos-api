@@ -142,6 +142,7 @@ router.post('/conversation-logs', async (req, res) => {
     const db = req.app.locals.db;
     const result = await db.collection('conversation_logs').insertOne({
       managerId: req.auth.userId,
+      orgId: req.auth.orgId,
       ...value,
       createdAt: new Date(),
     });
@@ -158,7 +159,7 @@ router.get('/actions', async (req, res) => {
     const db = req.app.locals.db;
     const { status } = req.query;
 
-    const filter = { managerId: req.auth.userId };
+    const filter = { managerId: req.auth.userId, orgId: req.auth.orgId };
     if (status) filter.status = status;
 
     const actions = await db.collection('manager_actions')
@@ -186,10 +187,14 @@ router.patch('/actions/:id', async (req, res) => {
     const db = req.app.locals.db;
     const { ObjectId } = require('mongodb');
 
-    await db.collection('manager_actions').updateOne(
-      { _id: new ObjectId(req.params.id), managerId: req.auth.userId },
+    const updateResult = await db.collection('manager_actions').updateOne(
+      { _id: new ObjectId(req.params.id), managerId: req.auth.userId, orgId: req.auth.orgId },
       { $set: { ...value, updatedAt: new Date() } }
     );
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: 'Action not found' });
+    }
 
     res.json({ message: 'Action updated' });
   } catch (error) {

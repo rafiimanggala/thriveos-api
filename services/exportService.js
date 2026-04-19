@@ -44,7 +44,7 @@ async function generateComplianceCSV(db, orgId) {
 
   const [checkins, riskTags, users] = await Promise.all([
     db.collection('checkins')
-      .find({ completedAt: { $gte: thirtyDaysAgo } })
+      .find({ orgId, completedAt: { $gte: thirtyDaysAgo } })
       .sort({ completedAt: -1 })
       .toArray(),
     db.collection('checkin_risk_tags')

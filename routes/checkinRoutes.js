@@ -40,6 +40,7 @@ router.post('/', authenticateUser, async (req, res) => {
 
     const checkin = {
       userId: req.auth.userId,
+      orgId: req.auth.orgId,
       completedAt: new Date(),
       who5: { ...who5, total: who5Total },
       factorsSelected: factors,
@@ -62,7 +63,7 @@ router.post('/', authenticateUser, async (req, res) => {
     }
 
     // Update streak
-    await updateStreak(db, req.auth.userId);
+    await updateStreak(db, req.auth.userId, req.auth.orgId);
 
     res.status(201).json({
       checkinId: result.insertedId,
@@ -134,13 +135,13 @@ router.get('/recommendations', authenticateUser, async (req, res) => {
   }
 });
 
-async function updateStreak(db, userId) {
+async function updateStreak(db, userId, orgId) {
   const today = new Date().toISOString().split('T')[0];
   const streak = await db.collection('streaks').findOne({ userId });
 
   if (!streak) {
     await db.collection('streaks').insertOne({
-      userId, currentStreak: 1, longestStreak: 1, lastCheckinDate: today,
+      userId, orgId, currentStreak: 1, longestStreak: 1, lastCheckinDate: today,
     });
     return;
   }
