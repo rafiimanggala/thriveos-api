@@ -7,7 +7,22 @@ const { authenticateUser } = require('../middleware/authMiddleware');
 router.get('/topics', authenticateUser, async (req, res) => {
   try {
     const db = req.app.locals.db;
-    const topics = await db.collection('hazard_taxonomy').find({}).toArray();
+    const rawTopics = await db.collection('hazard_taxonomy').find({}).toArray();
+    const lessonCounts = await db.collection('content_lessons').aggregate([
+      { $group: { _id: '$primaryHazard', count: { $sum: 1 } } }
+    ]).toArray();
+    const countMap = Object.fromEntries(lessonCounts.map(c => [c._id, c.count]));
+
+    const topics = rawTopics.map((t, i) => ({
+      id: t.id,
+      title: t.name || t.title || '',
+      description: t.description || '',
+      category: (t.sdtNeeds?.[0] || 'foundation').toLowerCase(),
+      sdtDimension: t.sdtNeeds?.[0] || 'Autonomy',
+      icon: 'book-outline',
+      sortOrder: t.sortOrder ?? i,
+      lessonCount: countMap[t.id] || 0,
+    }));
     res.json({ topics });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch topics' });
